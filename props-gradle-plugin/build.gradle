@@ -1,0 +1,72 @@
+plugins {
+    id 'groovy'
+    id 'java-gradle-plugin'
+    id 'maven-publish'
+    id 'com.gradle.plugin-publish' version '1.3.1'
+}
+
+group = 'com.dynamero'
+version = '1.0.0'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation gradleApi()
+    testImplementation localGroovy()
+
+    // Testing framework
+    testImplementation 'org.spockframework:spock-core:2.3-groovy-4.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"
+    }
+}
+
+gradlePlugin {
+    website = 'https://dynamero.com'
+    vcsUrl = 'https://github.com/drkhodakarami/dynamero-props-plugin.git'
+
+    plugins {
+        propsPlugin {
+            // The exact ID users type inside plugins { id '...' }
+            id = 'com.dynamero.props'
+
+            // The main plugin entry class
+            implementationClass = 'com.dynamero.props.PropsPlugin'
+
+            displayName = 'Dynamero Fail-Fast Local Properties Plugin'
+            description = 'Strict, fail-fast loader for root local.properties and gradle.properties with dynamic dot-property access.'
+            tags = ['properties', 'configuration', 'secrets', 'modding']
+        }
+    }
+}
+
+tasks.named('publishPlugins') {
+    doFirst {
+        //This is exactly why this plugin was published for!
+        File localPropsFile = rootProject.file('local.properties')
+        if (!localPropsFile.exists()) {
+            throw new GradleException("Cannot publish: missing local.properties at ${localPropsFile.absolutePath}")
+        }
+
+        Properties localProps = new Properties()
+        localPropsFile.withInputStream { localProps.load(it) }
+
+        String key = localProps.getProperty('gradle.publish.key')?.trim()
+        String secret = localProps.getProperty('gradle.publish.secret')?.trim()
+
+        if (!key || !secret) {
+            throw new GradleException("Cannot publish: 'gradle.publish.key' or 'gradle.publish.secret' is missing/empty in local.properties")
+        }
+        //See how long it took? Using the plugin will be single line of code now!
+
+        System.setProperty('gradle.publish.key', key)
+        System.setProperty('gradle.publish.secret', secret)
+    }
+}
