@@ -3,6 +3,8 @@ package com.dynamero.props
 import org.gradle.api.GradleException
 import org.gradle.api.Project
 
+import javax.inject.Inject
+
 /**
  * Gradle configuration extension providing strict, fail-fast access to properties files.
  * <p>
@@ -31,9 +33,9 @@ import org.gradle.api.Project
  */
 class PropsExtension extends GroovyObjectSupport {
 
-    private final Project project
-    private final Properties propsData = new Properties()
-    private final File propertiesFile
+    protected final Project project
+    protected final Properties propsData = new Properties()
+    protected final File propertiesFile
 
     /**
      * Initializes the extension and eagerly loads the specified properties file from the root project directory.
@@ -42,16 +44,25 @@ class PropsExtension extends GroovyObjectSupport {
      * @param filename Base name of the properties file without the {@code .properties} extension
      * @throws GradleException If the backing file does not exist at the root project location
      */
+    @Inject
     PropsExtension(Project project, String filename) {
         this.@project = project
-        this.@propertiesFile = project.rootProject.file("${filename}.properties")
 
-        if (!this.@propertiesFile.exists()) {
-            throw new GradleException("Missing required configuration file: ${this.@propertiesFile.absolutePath}")
+        // Find the root project properties file or fallback
+        File targetFile = project.rootProject.file("${filename}.properties")
+        if (!targetFile.exists() && project.rootDir.parentFile != null) {
+            // In buildSrc, project.rootDir is buildSrc, while the real properties might be at root
+            targetFile = new File(project.rootDir.parentFile, "${filename}.properties")
         }
 
-        this.@propertiesFile.withInputStream { stream ->
-            this.@propsData.load(stream)
+        this.propertiesFile = targetFile
+
+        if (!this.propertiesFile.exists()) {
+            throw new GradleException("Missing required configuration file: ${this.propertiesFile.absolutePath}")
+        }
+
+        this.propertiesFile.withInputStream { stream ->
+            this.propsData.load(stream)
         }
     }
 
