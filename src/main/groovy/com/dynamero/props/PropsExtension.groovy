@@ -36,6 +36,7 @@ class PropsExtension extends GroovyObjectSupport {
     final Project project
     final Properties propsData = new Properties()
     final File propertiesFile
+    private boolean fileLoaded = false
 
     /**
      * Initializes the extension and eagerly loads the specified properties file from the root project directory.
@@ -48,22 +49,125 @@ class PropsExtension extends GroovyObjectSupport {
     PropsExtension(Project project, String filename) {
         this.project = project
 
-        // Find the root project properties file or fallback
-        File targetFile = project.rootProject.file("${filename}.properties")
-        if (!targetFile.exists() && project.rootDir.parentFile != null) {
-            // In buildSrc, project.rootDir is buildSrc, while the real properties might be at root
-            targetFile = new File(project.rootDir.parentFile, "${filename}.properties")
-        }
+        // Resolve the root project directory reliably across all contexts
+        File rootDir = resolveRootDirectory(project)
+        File targetFile = new File(rootDir, "${filename}.properties")
 
         this.propertiesFile = targetFile
 
         if (!this.propertiesFile.exists()) {
-            throw new GradleException("Missing required configuration file: ${this.propertiesFile.absolutePath}")
+            String diagnostic = buildDiagnosticInfo(project, rootDir, filename)
+            throw new GradleException(
+                    "Missing required configuration file: ${filename}.properties\n" +
+                            "Expected path: ${this.propertiesFile.absolutePath}\n" +
+                            diagnostic
+            )
         }
 
-        this.propertiesFile.withInputStream { stream ->
-            this.propsData.load(stream)
+        loadPropertiesFile()
+    }
+
+    /**
+     * Loads properties from file with error handling.
+     */
+    private void loadPropertiesFile() {
+        if (fileLoaded) {
+            return
         }
+
+        try {
+            this.propertiesFile.withInputStream { stream ->
+                this.propsData.load(stream)
+            }
+            fileLoaded = true
+        } catch (IOException e) {
+            throw new GradleException(
+                    "Failed to read properties file: ${this.propertiesFile.absolutePath}\n" +
+                            "Error: ${e.message}",
+                    e
+            )
+        }
+    }
+
+    /**
+     * Builds diagnostic information to help debug file resolution issues.
+     */
+    private static String buildDiagnosticInfo(Project project, File rootDir, String filename) {
+        StringBuilder sb = new StringBuilder()
+        sb.append("\nDiagnostic Information:\n")
+        sb.append("  Root Project Dir: ${project.rootProject.projectDir.absolutePath}\n")
+        sb.append("  Current Project Dir: ${project.projectDir.absolutePath}\n")
+        sb.append("  Resolved Root Dir: ${rootDir.absolutePath}\n")
+        sb.append("  Looking for: ${filename}.properties\n")
+
+        // List files in root dir to help debugging
+        if (rootDir.exists() && rootDir.isDirectory()) {
+            File[] files = rootDir.listFiles { file ->
+                file.name.endsWith('.properties')
+            }
+            if (files != null && files.length > 0) {
+                sb.append("  Available .properties files in root:\n")
+                files.each { file ->
+                    sb.append("    - ${file.name}\n")
+                }
+            } else {
+                sb.append("  No .properties files found in root directory\n")
+            }
+        }
+
+        return sb.toString()
+    }
+
+    /**
+     * Resolves the root project directory reliably across buildSrc, main projects, and subprojects.
+     * <p>
+     * In buildSrc (a composite build), project.rootProject.projectDir is still the main project root.
+     * This method handles edge cases by:
+     * 1. Using project.rootProject.projectDir (most reliable)
+     * 2. Falling back to walk up the directory tree if needed
+     * </p>
+     *
+     * @param project The current Gradle project
+     * @return The root project directory
+     */
+    private static File resolveRootDirectory(Project project) {
+        // Primary strategy: use rootProject.projectDir
+        // This works correctly in buildSrc, main project, and all subprojects
+        File rootProjectDir = project.rootProject.projectDir
+
+        if (rootProjectDir != null && rootProjectDir.exists()) {
+            return rootProjectDir
+        }
+
+        // Fallback: walk up from current project directory
+        File current = project.projectDir
+        File lastValid = current
+
+        while (current != null && current.exists()) {
+            lastValid = current
+
+            // Check if this directory looks like a Gradle root
+            if (isGradleRoot(current)) {
+                return current
+            }
+
+            current = current.parentFile
+        }
+
+        // Ultimate fallback: return the highest we could walk to
+        return lastValid
+    }
+
+    /**
+     * Checks if a directory is likely a Gradle project root.
+     */
+    private static boolean isGradleRoot(File dir) {
+        return (new File(dir, "settings.gradle").exists() ||
+                new File(dir, "settings.gradle.kts").exists() ||
+                (new File(dir, "gradle.properties").exists() &&
+                        new File(dir, "build.gradle").exists()) ||
+                (new File(dir, "gradle.properties").exists() &&
+                        new File(dir, "build.gradle.kts").exists()))
     }
 
     /**
@@ -99,10 +203,16 @@ class PropsExtension extends GroovyObjectSupport {
      * @throws GradleException If the key does not exist or has an empty/whitespace-only value
      */
     String require(String key) {
+        loadPropertiesFile()
+
         String val = this.@propsData.getProperty(key)
 
         if (!val || val.trim().isEmpty()) {
-            throw new GradleException("Required property '${key}' is missing or empty in ${this.@propertiesFile.name}")
+            throw new GradleException(
+                    "Required property '${key}' is missing or empty in ${this.@propertiesFile.name}\n" +
+                            "File path: ${this.@propertiesFile.absolutePath}\n" +
+                            "Available properties: ${this.@propsData.stringPropertyNames().join(', ')}"
+            )
         }
 
         return val.trim()
@@ -116,6 +226,7 @@ class PropsExtension extends GroovyObjectSupport {
      * @return Trimmed string value or the provided default
      */
     String get(String key, String defaultValue = null) {
+        loadPropertiesFile()
         String val = this.@propsData.getProperty(key)
         return (val != null && !val.trim().isEmpty())
                 ? val.trim()
