@@ -33,9 +33,9 @@ import javax.inject.Inject
  */
 class PropsExtension extends GroovyObjectSupport {
 
-    protected final Project project
-    protected final Properties propsData = new Properties()
-    protected final File propertiesFile
+    final Project project
+    final Properties propsData = new Properties()
+    final File propertiesFile
 
     /**
      * Initializes the extension and eagerly loads the specified properties file from the root project directory.
@@ -46,7 +46,7 @@ class PropsExtension extends GroovyObjectSupport {
      */
     @Inject
     PropsExtension(Project project, String filename) {
-        this.@project = project
+        this.project = project
 
         // Find the root project properties file or fallback
         File targetFile = project.rootProject.file("${filename}.properties")
@@ -139,14 +139,15 @@ class PropsExtension extends GroovyObjectSupport {
      * @param name The name of the property being accessed
      * @return Trimmed string value resolved via {@link #require(String)}
      */
-    @Override
+    /*@Override
     Object getProperty(String name) {
-        // Allow standard Groovy/Java introspection to work normally
-        if (name == 'class' || name == 'metaClass') {
-            return super.getProperty(name)
+        // Check if the class itself (or a superclass) defines this property/field
+        MetaProperty metaProp = metaClass.getMetaProperty(name)
+        if (metaProp != null) {
+            return metaProp.getProperty(this)
         }
         return require(name)
-    }
+    }*/
 
     /**
      * Fallback dynamic resolution hook for Groovy MOP.
