@@ -6,7 +6,7 @@ plugins {
 }
 
 group = 'com.dynamero'
-version = '1.500.0'
+version = '1.0.1'
 
 repositories {
     mavenCentral()
@@ -25,29 +25,6 @@ test {
     useJUnitPlatform()
     testLogging {
         events "passed", "skipped", "failed"
-    }
-}
-
-// FIX: Manually configure marker publication for Maven Local
-publishing {
-    repositories {
-        mavenLocal()
-    }
-
-    publications {
-        pluginMarkerMaven(MavenPublication) {
-            groupId = 'com.dynamero.props'
-            artifactId = 'com.dynamero.props.gradle.plugin'
-            version = project.version
-
-            artifact jar
-
-            pom {
-                packaging = 'gradle-plugin'  // ← ADD THIS
-                name = 'Dynamero Fail-Fast Local Properties Plugin'
-                description = 'Strict, fail-fast loader for root local.properties and gradle.properties with dynamic dot-notation access.'
-            }
-        }
     }
 }
 

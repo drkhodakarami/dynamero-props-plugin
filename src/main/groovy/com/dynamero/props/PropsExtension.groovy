@@ -116,7 +116,7 @@ class PropsExtension extends GroovyObjectSupport {
             }
         }
 
-        // Priority 3: Walk up the directory tree from current project
+        // Priority 3: Walk up the directory tree from current project recursively
         File searchDir = currentDir
         while (searchDir != null && searchDir.exists()) {
             File candidateFile = new File(searchDir, propFileName)
